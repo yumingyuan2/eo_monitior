@@ -8,6 +8,7 @@
     <!-- Tailwind CSS for Shadcn/UI style -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/js/world.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; }
@@ -444,6 +445,15 @@
                     <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
                     TOP 分析 (Top Analysis)
                 </h2>
+                <!-- World Map -->
+                <div class="rounded-xl border bg-card text-card-foreground shadow-sm">
+                    <div class="flex flex-col space-y-1.5 p-6">
+                        <h3 class="font-semibold leading-none tracking-tight">全球请求分布</h3>
+                    </div>
+                    <div class="p-6 pt-0">
+                        <div id="chart_top_map" class="w-full h-[500px]"></div>
+                    </div>
+                </div>
                 <div class="grid gap-4 md:grid-cols-2">
                     <!-- Country -->
                     <div class="rounded-xl border bg-card text-card-foreground shadow-sm">
@@ -710,6 +720,7 @@
         let chartTopRequestUaBrowser = null;
         let chartTopRequestUaOs = null;
         let chartTopRequestUa = null;
+        let chartTopMap = null;
 
         const provinceMap = {
             '22': '北京', '86': '内蒙古', '146': '山西', '1069': '河北', '1177': '天津',
@@ -765,6 +776,40 @@
             'BO': '玻利维亚', 'PY': '巴拉圭', 'BR': '巴西', 'PE': '秘鲁', 'CL': '智利',
             'SR': '苏里南', 'CO': '哥伦比亚', 'UY': '乌拉圭', 'EC': '厄瓜多尔', 'VE': '委内瑞拉',
             'GF': '法属圭亚那', 'Antarctica': '南极洲'
+        };
+
+        const codeToMapName = {
+            'CN': 'China', 'AF': 'Afghanistan', 'AL': 'Albania', 'DZ': 'Algeria', 'AO': 'Angola', 'AR': 'Argentina',
+            'AM': 'Armenia', 'AU': 'Australia', 'AT': 'Austria', 'AZ': 'Azerbaijan', 'BS': 'Bahamas', 'BH': 'Bahrain',
+            'BD': 'Bangladesh', 'BB': 'Barbados', 'BY': 'Belarus', 'BE': 'Belgium', 'BZ': 'Belize', 'BJ': 'Benin',
+            'BT': 'Bhutan', 'BO': 'Bolivia', 'BA': 'Bosnia and Herzegovina', 'BW': 'Botswana', 'BR': 'Brazil',
+            'BN': 'Brunei', 'BG': 'Bulgaria', 'BF': 'Burkina Faso', 'BI': 'Burundi', 'KH': 'Cambodia', 'CM': 'Cameroon',
+            'CA': 'Canada', 'CF': 'Central African Republic', 'TD': 'Chad', 'CL': 'Chile', 'CO': 'Colombia',
+            'KM': 'Comoros', 'CG': 'Republic of the Congo', 'CD': 'Democratic Republic of the Congo', 'CR': 'Costa Rica',
+            'HR': 'Croatia', 'CU': 'Cuba', 'CY': 'Cyprus', 'CZ': 'Czech Republic', 'DK': 'Denmark', 'DJ': 'Djibouti',
+            'DO': 'Dominican Republic', 'EC': 'Ecuador', 'EG': 'Egypt', 'SV': 'El Salvador', 'GQ': 'Equatorial Guinea',
+            'ER': 'Eritrea', 'EE': 'Estonia', 'ET': 'Ethiopia', 'FJ': 'Fiji', 'FI': 'Finland', 'FR': 'France',
+            'GA': 'Gabon', 'GM': 'Gambia', 'GE': 'Georgia', 'DE': 'Germany', 'GH': 'Ghana', 'GR': 'Greece',
+            'GT': 'Guatemala', 'GN': 'Guinea', 'GW': 'Guinea-Bissau', 'GY': 'Guyana', 'HT': 'Haiti', 'HN': 'Honduras',
+            'HU': 'Hungary', 'IS': 'Iceland', 'IN': 'India', 'ID': 'Indonesia', 'IR': 'Iran', 'IQ': 'Iraq',
+            'IE': 'Ireland', 'IL': 'Israel', 'IT': 'Italy', 'CI': 'Ivory Coast', 'JM': 'Jamaica', 'JP': 'Japan',
+            'JO': 'Jordan', 'KZ': 'Kazakhstan', 'KE': 'Kenya', 'KP': 'North Korea', 'KR': 'South Korea',
+            'KW': 'Kuwait', 'KG': 'Kyrgyzstan', 'LA': 'Laos', 'LV': 'Latvia', 'LB': 'Lebanon', 'LS': 'Lesotho',
+            'LR': 'Liberia', 'LY': 'Libya', 'LT': 'Lithuania', 'LU': 'Luxembourg', 'MK': 'Macedonia', 'MG': 'Madagascar',
+            'MW': 'Malawi', 'MY': 'Malaysia', 'ML': 'Mali', 'MT': 'Malta', 'MR': 'Mauritania', 'MU': 'Mauritius',
+            'MX': 'Mexico', 'MD': 'Moldova', 'MN': 'Mongolia', 'ME': 'Montenegro', 'MA': 'Morocco', 'MZ': 'Mozambique',
+            'MM': 'Myanmar', 'NA': 'Namibia', 'NP': 'Nepal', 'NL': 'Netherlands', 'NZ': 'New Zealand', 'NI': 'Nicaragua',
+            'NE': 'Niger', 'NG': 'Nigeria', 'NO': 'Norway', 'OM': 'Oman', 'PK': 'Pakistan', 'PA': 'Panama',
+            'PG': 'Papua New Guinea', 'PY': 'Paraguay', 'PE': 'Peru', 'PH': 'Philippines', 'PL': 'Poland',
+            'PT': 'Portugal', 'PR': 'Puerto Rico', 'QA': 'Qatar', 'RO': 'Romania', 'RU': 'Russia', 'RW': 'Rwanda',
+            'SA': 'Saudi Arabia', 'SN': 'Senegal', 'RS': 'Serbia', 'SL': 'Sierra Leone', 'SG': 'Singapore',
+            'SK': 'Slovakia', 'SI': 'Slovenia', 'SB': 'Solomon Islands', 'SO': 'Somalia', 'ZA': 'South Africa',
+            'SS': 'South Sudan', 'ES': 'Spain', 'LK': 'Sri Lanka', 'SD': 'Sudan', 'SR': 'Suriname', 'SZ': 'Swaziland',
+            'SE': 'Sweden', 'CH': 'Switzerland', 'SY': 'Syria', 'TW': 'Taiwan', 'TJ': 'Tajikistan', 'TZ': 'Tanzania',
+            'TH': 'Thailand', 'TL': 'Timor-Leste', 'TG': 'Togo', 'TT': 'Trinidad and Tobago', 'TN': 'Tunisia',
+            'TR': 'Turkey', 'TM': 'Turkmenistan', 'UG': 'Uganda', 'UA': 'Ukraine', 'AE': 'United Arab Emirates',
+            'GB': 'United Kingdom', 'US': 'United States', 'UY': 'Uruguay', 'UZ': 'Uzbekistan', 'VU': 'Vanuatu',
+            'VE': 'Venezuela', 'VN': 'Vietnam', 'YE': 'Yemen', 'ZM': 'Zambia', 'ZW': 'Zimbabwe'
         };
 
         const metricsConfig = {
@@ -1124,6 +1169,7 @@
             chartTopRequestUaBrowser = echarts.init(document.getElementById('chart_top_request_ua_browser'));
             chartTopRequestUaOs = echarts.init(document.getElementById('chart_top_request_ua_os'));
             chartTopRequestUa = echarts.init(document.getElementById('chart_top_request_ua'));
+            chartTopMap = echarts.init(document.getElementById('chart_top_map'));
 
             await refreshData();
         }
@@ -1708,8 +1754,63 @@
             chartInstance.setOption(option);
         };
 
+        function updateTopMapChart(results) {
+            const metric = 'l7Flow_request_country';
+            const data = results[metric];
+
+            if (!data || data.type !== 'top' || !data.data) return;
+
+            // Map data to ECharts format
+            const mapData = data.data.map(item => {
+                const name = codeToMapName[item.Key] || item.Key;
+                return {
+                    name: name,
+                    value: item.Value
+                };
+            });
+
+            const maxVal = mapData.length > 0 ? Math.max(...mapData.map(item => item.value)) : 0;
+
+            const option = {
+                tooltip: {
+                    trigger: 'item',
+                    formatter: function (params) {
+                        const val = params.value;
+                        return `${params.name}<br/>请求数: ${val ? val.toLocaleString() : 0} 次`;
+                    }
+                },
+                visualMap: {
+                    min: 0,
+                    max: maxVal,
+                    left: 'left',
+                    top: 'bottom',
+                    text: ['High', 'Low'],
+                    calculable: true,
+                    inRange: {
+                        color: ['#e0f2fe', '#0284c7']
+                    }
+                },
+                series: [
+                    {
+                        name: '请求数',
+                        type: 'map',
+                        mapType: 'world',
+                        roam: true,
+                        itemStyle: {
+                            emphasis: { label: { show: true } }
+                        },
+                        data: mapData
+                    }
+                ]
+            };
+
+            chartTopMap.setOption(option);
+        }
+
         //6.有使用
         function updateTopAnalysisSection(results) {
+            updateTopMapChart(results);
+
             // Flux Charts
             renderTopChart(results, chartTopCountry, 'l7Flow_outFlux_country', countryMap);
             renderTopChart(results, chartTopProvince, 'l7Flow_outFlux_province', provinceMap);
@@ -2748,6 +2849,7 @@
             chartTopRequestUaBrowser && chartTopRequestUaBrowser.resize();
             chartTopRequestUaOs && chartTopRequestUaOs.resize();
             chartTopRequestUa && chartTopRequestUa.resize();
+            chartTopMap && chartTopMap.resize();
         });
 
         // Start - Entrance
