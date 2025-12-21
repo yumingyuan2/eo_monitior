@@ -107,6 +107,10 @@
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen p-8">
+    <!-- Loading Progress Bar -->
+    <div id="loading-progress-container" class="fixed top-0 left-0 w-full h-1 z-50 bg-transparent pointer-events-none">
+        <div id="loading-progress-bar" class="h-full bg-blue-500 transition-all duration-300 ease-out w-0"></div>
+    </div>
     <div class="max-w-7xl mx-auto space-y-8">
         
         <!-- Header -->
@@ -1134,9 +1138,69 @@
             };
         }
 
-        async function fetchData(metric) {
+        function calculatePreviousRange(startStr, endStr) {
+            const start = new Date(startStr);
+            const end = new Date(endStr);
+            const duration = end.getTime() - start.getTime();
+            const prevEnd = new Date(start.getTime()); 
+            const prevStart = new Date(prevEnd.getTime() - duration);
+            return {
+                prevStartTime: formatDate(prevStart),
+                prevEndTime: formatDate(prevEnd)
+            };
+        }
+
+        function renderGrowth(elementId, currentVal, prevVal, inverse = false) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+
+            let growthEl = document.getElementById(elementId + '_growth');
+            if (!growthEl) {
+                growthEl = document.createElement('span');
+                growthEl.id = elementId + '_growth';
+                el.appendChild(growthEl);
+            }
+
+            if (prevVal === 0) {
+                growthEl.innerText = ''; 
+                return;
+            }
+
+            const growth = ((currentVal - prevVal) / prevVal) * 100;
+            const absGrowth = Math.abs(growth).toFixed(2);
+            
+            // Color Logic: 
+            // All: Increase = Red, Decrease = Green
+            
+            let colorClass = 'text-gray-500';
+            let icon = '';
+            
+            if (growth > 0) {
+                icon = '↑';
+                colorClass = 'text-red-500';
+            } else if (growth < 0) {
+                icon = '↓';
+                colorClass = 'text-green-500';
+            } else {
+                icon = '-';
+            }
+
+            growthEl.className = `text-sm font-normal ml-2 ${colorClass}`;
+            growthEl.innerText = `${icon} ${absGrowth}%`;
+        }
+
+        async function fetchData(metric, customStart, customEnd) {
             try {
-                const { startTime, endTime } = calculateTimeRange();
+                let startTime, endTime;
+                if (customStart && customEnd) {
+                    startTime = customStart;
+                    endTime = customEnd;
+                } else {
+                    const range = calculateTimeRange();
+                    startTime = range.startTime;
+                    endTime = range.endTime;
+                }
+
                 const interval = document.getElementById('interval').value;
                 const zoneId = document.getElementById('zoneId').value.trim();
                 
@@ -1412,11 +1476,13 @@
                      document.getElementById('kpi_pages_daily_build').innerText = '-';
                      document.getElementById('kpi_pages_monthly_build').innerText = '-';
                 }
+                return true;
 
             } catch (err) {
                 console.error("Error fetching pages build stats:", err);
                 document.getElementById('kpi_pages_daily_build').innerText = 'Error';
                 document.getElementById('kpi_pages_monthly_build').innerText = 'Error';
+                return false;
             }
         }
 
@@ -1493,10 +1559,12 @@
                      document.getElementById('kpi_pages_cloud_function_total').innerText = '-';
                      chartPagesCloudFunctionRequests.clear();
                 }
+                return true;
             } catch (err) {
                 console.error("Error fetching pages cloud function stats:", err);
                 document.getElementById('kpi_pages_cloud_function_total').innerText = 'Error';
                 chartPagesCloudFunctionRequests.clear();
+                return false;
             }
         }
 
@@ -1529,16 +1597,28 @@
                      document.getElementById('kpi_pages_monthly_cf_requests').innerText = '-';
                      document.getElementById('kpi_pages_monthly_cf_gbs').innerText = '-';
                 }
+                return true;
             } catch (err) {
                 console.error("Error fetching pages cloud function monthly stats:", err);
                 document.getElementById('kpi_pages_monthly_cf_requests').innerText = 'Error';
                 document.getElementById('kpi_pages_monthly_cf_gbs').innerText = 'Error';
+                return false;
             }
         }
 
         async function refreshData() {
             // Show loading
             document.querySelectorAll('[id^="kpi_"]').forEach(el => el.innerText = '加载中...');
+
+            // Initialize Progress Bar
+            const progressBar = document.getElementById('loading-progress-bar');
+            if (progressBar) {
+                progressBar.style.width = '0%';
+                progressBar.classList.remove('bg-red-500');
+                progressBar.classList.add('bg-blue-500');
+                progressBar.parentElement.classList.remove('opacity-0');
+                progressBar.parentElement.classList.remove('hidden');
+            }
 
             // Check time range for Security Metrics
             const { startTime, endTime } = calculateTimeRange();
@@ -1561,30 +1641,116 @@
 
             const results = {};
             
+            // Progress Bar Logic
+            let totalTasks = 3 + allMetrics.length * 2;
+            let completedTasks = 0;
+            let hasError = false;
+
+            const updateProgress = (success = true) => {
+                completedTasks++;
+                if (!success) hasError = true;
+                
+                const percentage = Math.min((completedTasks / totalTasks) * 100, 100);
+                if (progressBar) {
+                    progressBar.style.width = `${percentage}%`;
+                    if (hasError) {
+                        progressBar.classList.remove('bg-blue-500');
+                        progressBar.classList.add('bg-red-500');
+                    }
+                    
+                    if (completedTasks >= totalTasks) {
+                        setTimeout(() => {
+                             progressBar.style.width = '100%'; // Ensure full width
+                             setTimeout(() => {
+                                 progressBar.style.width = '0%';
+                                 // progressBar.parentElement.classList.add('hidden'); 
+                             }, 500);
+                        }, 200);
+                    }
+                }
+            };
+            
             // Start Pages Build Stats fetch (independent)
-            fetchPagesBuildStats();
+            fetchPagesBuildStats().then((res) => updateProgress(res));
             // Start Pages Cloud Function Stats fetch (independent) - Pass time range
-            fetchPagesCloudFunctionStats(startTime, endTime);
+            fetchPagesCloudFunctionStats(startTime, endTime).then((res) => updateProgress(res));
             // Start Pages Cloud Function Monthly Stats fetch (independent)
-            fetchPagesCloudFunctionMonthlyStats();
+            fetchPagesCloudFunctionMonthlyStats().then((res) => updateProgress(res));
 
             // Parallel fetch
-            await Promise.all(allMetrics.map(async (metric) => {
-                const res = await fetchData(metric);
-                if (res) {
-                    results[metric] = processData(res, metric);
-                }
-            }));
+            // calculateTimeRange called above (line 1606), reusing startTime/endTime variables
+            const { prevStartTime, prevEndTime } = calculatePreviousRange(startTime, endTime);
 
-            // Update UI
-            updateTrafficSection(results); //1.
-            updateBandwidthSection(results); //2.
-            updateOriginPullSection(results); //3.
-            updateRequestsSection(results); //4.
-            updatePerformanceSection(results); //5.
-            updateEdgeFunctionsSection(results); // New
-            updateSecuritySection(results); //5.1
-            updateTopAnalysisSection(results); //6.
+            // Group metrics by section for efficient updates
+            const updateMap = {
+                'traffic': updateTrafficSection,
+                'bandwidth': updateBandwidthSection,
+                'originPull': updateOriginPullSection,
+                'requests': updateRequestsSection,
+                'performance': updatePerformanceSection,
+                'edgeFunctions': updateEdgeFunctionsSection,
+                'security': updateSecuritySection,
+                'topAnalysis': updateTopAnalysisSection
+            };
+
+            // Helper to determine which section a metric belongs to
+            const getSection = (metric) => {
+                 for (const [section, metrics] of Object.entries(metricsConfig)) {
+                     if (metrics.includes(metric)) return section;
+                 }
+                 return null;
+            };
+
+            // Track pending updates per section to avoid too many renders (debounce-like)
+            // But since we want "show as soon as available", we can update per metric or per section group.
+            // Updating per metric might be too granular for charts that share multiple metrics (like Traffic Chart has 3 lines).
+            // So we will trigger section update whenever a metric in that section is ready.
+            
+            // To prevent flickering or partial charts, we might want to wait for all metrics IN A SECTION to be ready?
+            // The user said "whichever metric is fetched, show it". 
+            // For KPIs, this is easy. For charts with multiple lines, adding one line at a time is fine too (ECharts supports merge).
+            
+            // Let's iterate all metrics and fire requests in parallel
+            allMetrics.forEach((metric) => {
+                const section = getSection(metric);
+
+                // 1. Fetch Current Data
+                fetchData(metric).then(res => {
+                    if (res) {
+                        results[metric] = processData(res, metric);
+                        // Update UI immediately when current data arrives
+                        if (section && updateMap[section]) {
+                            updateMap[section](results);
+                        }
+                        updateProgress(true);
+                    } else {
+                        updateProgress(false);
+                    }
+                }).catch(e => {
+                    console.error(`Error loading metric ${metric}:`, e);
+                    updateProgress(false);
+                });
+
+                // 2. Fetch Previous Data (Parallel)
+                fetchData(metric, prevStartTime, prevEndTime).then(prevRes => {
+                    if (prevRes) {
+                        results[metric + '_prev'] = processData(prevRes, metric);
+                        // Re-update UI to show growth (only if current data is already there)
+                        if (results[metric] && section && updateMap[section]) {
+                            updateMap[section](results);
+                        }
+                        updateProgress(true);
+                    } else {
+                        // Previous data failure isn't critical, but we track it for progress
+                        // We might not want to turn red for missing previous data? 
+                        // User said "any API request fails", so let's stick to that.
+                        updateProgress(false);
+                    }
+                }).catch(e => {
+                    console.error(`Error loading prev metric ${metric}:`, e);
+                    updateProgress(false);
+                });
+            });
         }
 
         //1.有使用
@@ -1611,6 +1777,12 @@
                 
                 // Update KPI
                 document.getElementById(`kpi_${metric}`).innerText = formatBytes(data.sum);
+
+                // Growth
+                const prevData = results[metric + '_prev'];
+                if (prevData) {
+                    renderGrowth(`kpi_${metric}`, data.sum, prevData.sum);
+                }
 
                 if (timeData.length === 0) timeData = data.timeData;
 
@@ -1676,6 +1848,12 @@
                 
                 // Update KPI (Max/Peak)
                 document.getElementById(`kpi_${metric}`).innerText = formatBps(data.max);
+
+                // Growth
+                const prevData = results[metric + '_prev'];
+                if (prevData) {
+                    renderGrowth(`kpi_${metric}`, data.max, prevData.max);
+                }
 
                 if (timeData.length === 0) timeData = data.timeData;
 
@@ -1759,6 +1937,20 @@
                          kpiEl.innerText = formatCount(data.sum);
                     } else {
                          kpiEl.innerText = data.sum.toLocaleString();
+                    }
+
+                    // Growth (Inverse=true because more origin pull is usually worse/costly)
+                    const prevData = results[metric + '_prev'];
+                    if (prevData) {
+                        let curVal, preVal;
+                        if (metric.includes('Bandwidth')) {
+                             curVal = data.max;
+                             preVal = prevData.max;
+                        } else {
+                             curVal = data.sum;
+                             preVal = prevData.sum;
+                        }
+                        renderGrowth(`kpi_${metric}`, curVal, preVal, true);
                     }
                 }
 
@@ -1880,6 +2072,12 @@
                 // Update KPI
                 document.getElementById(`kpi_${metric}`).innerText = formatCount(data.sum);
 
+                // Growth
+                const prevData = results[metric + '_prev'];
+                if (prevData) {
+                    renderGrowth(`kpi_${metric}`, data.sum, prevData.sum);
+                }
+
                 if (timeData.length === 0) timeData = data.timeData;
 
                 // Chart Data (Dynamic Unit)
@@ -1931,6 +2129,12 @@
                 
                 // Update KPI (Avg)
                 document.getElementById(`kpi_${metric}`).innerText = data.avg.toFixed(2) + ' ms';
+
+                // Growth (Inverse=true for Latency)
+                const prevData = results[metric + '_prev'];
+                if (prevData) {
+                    renderGrowth(`kpi_${metric}`, data.avg, prevData.avg, true);
+                }
 
                 if (timeData.length === 0) timeData = data.timeData;
 
@@ -1988,6 +2192,15 @@
                     } else if (config.unitType === 'ms') {
                         // Format large numbers with commas
                         kpiEl.innerText = data.sum.toLocaleString() + ' ms';
+                    }
+
+                    // Growth
+                    const prevData = results[metric + '_prev'];
+                    if (prevData) {
+                        const curVal = data.sum;
+                        const preVal = prevData.sum;
+                        // Inverse if ms (CPU Cost)
+                        renderGrowth(config.kpiId, curVal, preVal, config.unitType === 'ms');
                     }
                 }
 
@@ -2108,6 +2321,15 @@
             if (kpiEl) {
                 const formatted = formatCount(totalHits);
                 kpiEl.innerText = formatted;
+
+                // Growth
+                let prevTotalHits = 0;
+                let hasPrev = false;
+                metrics.forEach(metric => {
+                    const pd = results[metric + '_prev'];
+                    if (pd) { prevTotalHits += pd.sum; hasPrev = true; }
+                });
+                if (hasPrev) renderGrowth('kpi_security_hits', totalHits, prevTotalHits, true);
             }
 
             const option = {
