@@ -1,12 +1,16 @@
 # EdgeOne Monitoring Dashboard (EdgeOne 监控大屏)
 
+> [!CAUTION]
+> 新demo 本地部署版本，功能较少仅供参考： https://eoddos.2x.nz/
+> 
+> 原项目Demo已被DDoS炸
+![27d1b418ff2918a4926e98db778dd554](https://github.com/user-attachments/assets/fc437ef0-b5a6-4113-ab1f-9da91e20be06)
+
 > [!NOTE]
 > 提示：本项目已全面支持腾讯云 EdgeOne 全球版（中国站与国际站账号均可直接使用）。
 
 ### 效果图
 <img width="2087" height="11971" alt="image" src="https://github.com/user-attachments/assets/cc71dc11-8a5d-4d59-9543-e0dbabac4b33" />
-
-
 
 这是一个基于 Tencent Cloud EdgeOne API 构建的实时监控大屏，旨在提供直观的流量和请求分析。
 
